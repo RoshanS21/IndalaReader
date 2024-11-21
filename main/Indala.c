@@ -1,17 +1,21 @@
-#include <string.h>
+#include "esp_event.h"
+#include "esp_http_client.h"
+#include "esp_log.h"
+#include "esp_system.h"
+#include "esp_timer.h"
+#include "esp_wifi.h"
+#include "driver/gpio.h"
+#include "freertos/event_groups.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
-#include "freertos/event_groups.h"
-#include "esp_system.h"
-#include "esp_wifi.h"
-#include "esp_event.h"
-#include "nvs_flash.h"
-#include "driver/gpio.h"
-#include "esp_log.h"
 #include "freertos/queue.h"
-#include "esp_timer.h"
 #include "lwip/err.h"
 #include "lwip/sys.h"
+#include "nvs_flash.h"
+#include <string.h>
+
+// Flask server URL
+#define SERVER_URL "https://cdda-2603-8081-1410-5a02-294b-6de8-de97-e293.ngrok-free.app:8000/verify"
 
 // WiFi Configuration
 #define WIFI_SSID      "MySpectrumWiFi80-2G"
@@ -47,8 +51,49 @@ void wifi_init_sta(void);
 static void event_handler(void* arg, esp_event_base_t event_base, int32_t event_id, void* event_data);
 static void print_wiegand_data(const volatile wiegand_t* data);
 static void process_wiegand_data(void);
-void wiegand_task(void* arg);
 void app_main(void);
+
+// Function to send card number to server and log the response
+static void send_card_to_server(uint32_t cardNumber) {
+    char post_data[64];
+    snprintf(post_data, sizeof(post_data), "{\"card_id\":\"%08lx\"}", cardNumber);
+
+    esp_http_client_config_t config = {
+        .url = SERVER_URL,
+    };
+
+    esp_http_client_handle_t client = esp_http_client_init(&config);
+
+    // Set HTTP POST method and payload
+    esp_http_client_set_method(client, HTTP_METHOD_POST);
+    esp_http_client_set_header(client, "Content-Type", "application/json");
+    esp_http_client_set_post_field(client, post_data, strlen(post_data));
+
+    // Perform the HTTP request
+    esp_err_t err = esp_http_client_perform(client);
+
+    if (err == ESP_OK) {
+        int status_code = esp_http_client_get_status_code(client);
+        ESP_LOGI(WIEGAND_TAG, "HTTP POST Status: %d", status_code);
+
+        if (status_code == 200) {
+            char response[128];
+            int len = esp_http_client_read(client, response, sizeof(response) - 1);
+            if (len > 0) {
+                response[len] = '\0';
+                ESP_LOGI(WIEGAND_TAG, "Server Response: %s", response);
+            }
+        } else if (status_code == 403) {
+            ESP_LOGW(WIEGAND_TAG, "Card not authorized");
+        } else {
+            ESP_LOGE(WIEGAND_TAG, "Unexpected HTTP status code: %d", status_code);
+        }
+    } else {
+        ESP_LOGE(WIEGAND_TAG, "HTTP POST failed: %s", esp_err_to_name(err));
+    }
+
+    esp_http_client_cleanup(client);
+}
 
 void IRAM_ATTR d0_isr_handler(void* arg) {
     uint32_t gpio_num = (uint32_t) arg;
@@ -88,8 +133,12 @@ static void process_wiegand_data() {
                               (wiegandData.data[4] << 1);
 
         ESP_LOGI(WIEGAND_TAG, "Facility Code: %d", facilityCode);
-        ESP_LOGI(WIEGAND_TAG, "Card Number: %08lx", (unsigned long)cardNumber);
+        ESP_LOGI(WIEGAND_TAG, "Card Number: %lu", (unsigned long)cardNumber);
+        ESP_LOGI(WIEGAND_TAG, "Card Number(Hex): %08lx", (unsigned long)cardNumber);
         ESP_LOGI(WIEGAND_TAG, " ");
+
+        // Send card number to the server
+        send_card_to_server(cardNumber);
     } else {
         ESP_LOGE(WIEGAND_TAG, "Invalid Wiegand bit length");
     }
@@ -219,7 +268,7 @@ void app_main(void) {
     };
     esp_timer_create(&timer_args, &wiegand_timer);
 
-    xTaskCreate(gpio_task_example, "gpio_task_example", 2048, NULL, 10, NULL);
+    xTaskCreate(gpio_task_example, "gpio_task_example", 4096, NULL, 10, NULL);
 
     ESP_LOGI(WIEGAND_TAG, "Wiegand Reader Initialized on Pins %d (D0) and %d (D1)", D0_PIN, D1_PIN);
 }
