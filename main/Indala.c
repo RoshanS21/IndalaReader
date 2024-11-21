@@ -1,28 +1,54 @@
-#include "driver/gpio.h"
-#include "esp_log.h"
+#include <string.h>
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "freertos/event_groups.h"
+#include "esp_system.h"
+#include "esp_wifi.h"
+#include "esp_event.h"
+#include "nvs_flash.h"
+#include "driver/gpio.h"
+#include "esp_log.h"
 #include "freertos/queue.h"
 #include "esp_timer.h"
+#include "lwip/err.h"
+#include "lwip/sys.h"
 
+// WiFi Configuration
+#define WIFI_SSID      "MySpectrumWiFi80-2G"
+#define WIFI_PASS      "livelyroad189"
+#define MAX_RETRY      5
+
+#define WIFI_CONNECTED_BIT BIT0
+#define WIFI_FAIL_BIT      BIT1
+
+// Wiegand Configuration
 #define D0_PIN GPIO_NUM_4
 #define D1_PIN GPIO_NUM_5
+#define MAX_BITS 32
+#define WIEGAND_TIMEOUT 50000
 
-#define MAX_BITS 32 // max number of bits to capture
-#define WIEGAND_TIMEOUT 50000 // time to wait for another bit (in microseconds)
+static EventGroupHandle_t wifi_event_group;
+static const char *WIFI_TAG = "WIFI";
+static const char *WIEGAND_TAG = "WIEGAND_READER";
 
-static const char *TAG = "WIEGAND_READER";
-
+static int retry_num = 0;
 typedef struct {
     uint8_t bitCount;
     uint8_t data[MAX_BITS / 8];
 } wiegand_t;
 
 volatile wiegand_t wiegandData;
+
 static QueueHandle_t gpio_evt_queue = NULL;
 static esp_timer_handle_t wiegand_timer;
 
+// Function Prototypes
+void wifi_init_sta(void);
+static void event_handler(void* arg, esp_event_base_t event_base, int32_t event_id, void* event_data);
 static void print_wiegand_data(const volatile wiegand_t* data);
+static void process_wiegand_data(void);
+void wiegand_task(void* arg);
+void app_main(void);
 
 void IRAM_ATTR d0_isr_handler(void* arg) {
     uint32_t gpio_num = (uint32_t) arg;
@@ -36,7 +62,7 @@ void IRAM_ATTR d1_isr_handler(void* arg) {
 
 static void wiegand_timeout_cb(void* arg) {
     if (wiegandData.bitCount > 0) {
-        ESP_LOGE(TAG, "Wiegand timeout, received %d bits (incomplete data)", wiegandData.bitCount);
+        ESP_LOGE(WIEGAND_TAG, "Wiegand timeout, received %d bits (incomplete data)", wiegandData.bitCount);
         print_wiegand_data(&wiegandData);
         wiegandData.bitCount = 0;
     }
@@ -48,27 +74,24 @@ static void print_wiegand_data(const volatile wiegand_t* data) {
         buffer[i] = ((data->data[i / 8] >> (7 - (i % 8))) & 1) ? '1' : '0';
     }
     buffer[data->bitCount] = '\0';
-    ESP_LOGI(TAG, "Wiegand data: %s", buffer);
+    ESP_LOGI(WIEGAND_TAG, "Wiegand data: %s", buffer);
 }
 
 static void process_wiegand_data() {
-    ESP_LOGI(TAG, "Received %d bits", wiegandData.bitCount);
+    ESP_LOGI(WIEGAND_TAG, "Processing %d bits", wiegandData.bitCount);
     if (wiegandData.bitCount == 32) {
-        ESP_LOGI(TAG, "Valid card data received");
-        print_wiegand_data(&wiegandData);
-
-        // Extract facility code and card number
+        // Extract Facility Code and Card Number
         uint8_t facilityCode = (wiegandData.data[0] << 1) | (wiegandData.data[1] >> 7);
         uint32_t cardNumber = ((wiegandData.data[1] & 0x7F) << 25) |
                               (wiegandData.data[2] << 17) |
                               (wiegandData.data[3] << 9) |
                               (wiegandData.data[4] << 1);
 
-        ESP_LOGI(TAG, "Facility Code: %d", facilityCode);
-        ESP_LOGI(TAG, "Card Number: %08lx", (unsigned long)cardNumber);  // Use %08lx for unsigned long in hex
-        ESP_LOGI(TAG, " ");
+        ESP_LOGI(WIEGAND_TAG, "Facility Code: %d", facilityCode);
+        ESP_LOGI(WIEGAND_TAG, "Card Number: %08lx", (unsigned long)cardNumber);
+        ESP_LOGI(WIEGAND_TAG, " ");
     } else {
-        ESP_LOGE(TAG, "Invalid Wiegand bit length");
+        ESP_LOGE(WIEGAND_TAG, "Invalid Wiegand bit length");
     }
     wiegandData.bitCount = 0;
 }
@@ -87,43 +110,116 @@ static void gpio_task_example(void* arg) {
                 wiegandData.bitCount++;
             }
             if (wiegandData.bitCount >= MAX_BITS) {
-                print_wiegand_data(&wiegandData);
                 process_wiegand_data();
-                vTaskDelay(pdMS_TO_TICKS(1000)); // Add delay to avoid continuous logging
             }
         }
     }
 }
 
+static void event_handler(void* arg, esp_event_base_t event_base, int32_t event_id, void* event_data) {
+    if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_START) {
+        esp_wifi_connect();
+    } else if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_DISCONNECTED) {
+        if (retry_num < MAX_RETRY) {
+            esp_wifi_connect();
+            retry_num++;
+            ESP_LOGI(WIFI_TAG, "Retry to connect to the AP");
+        } else {
+            xEventGroupSetBits(wifi_event_group, WIFI_FAIL_BIT);
+        }
+        ESP_LOGI(WIFI_TAG, "Failed to connect");
+    } else if (event_base == IP_EVENT && event_id == IP_EVENT_STA_GOT_IP) {
+        ip_event_got_ip_t* event = (ip_event_got_ip_t*) event_data;
+        ESP_LOGI(WIFI_TAG, "Got IP: " IPSTR, IP2STR(&event->ip_info.ip));
+        retry_num = 0;
+        xEventGroupSetBits(wifi_event_group, WIFI_CONNECTED_BIT);
+    }
+}
+
+void wifi_init_sta(void) {
+    wifi_event_group = xEventGroupCreate();
+
+    ESP_ERROR_CHECK(esp_netif_init());
+    ESP_ERROR_CHECK(esp_event_loop_create_default());
+    esp_netif_create_default_wifi_sta();
+
+    wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
+    ESP_ERROR_CHECK(esp_wifi_init(&cfg));
+
+    esp_event_handler_instance_t instance_any_id;
+    esp_event_handler_instance_t instance_got_ip;
+    ESP_ERROR_CHECK(esp_event_handler_instance_register(WIFI_EVENT,
+                                                        ESP_EVENT_ANY_ID,
+                                                        &event_handler,
+                                                        NULL,
+                                                        &instance_any_id));
+    ESP_ERROR_CHECK(esp_event_handler_instance_register(IP_EVENT,
+                                                        IP_EVENT_STA_GOT_IP,
+                                                        &event_handler,
+                                                        NULL,
+                                                        &instance_got_ip));
+
+    wifi_config_t wifi_config = {
+        .sta = {
+            .ssid = WIFI_SSID,
+            .password = WIFI_PASS,
+            .threshold.authmode = WIFI_AUTH_WPA2_PSK,
+        },
+    };
+
+    ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA));
+    ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_STA, &wifi_config));
+    ESP_ERROR_CHECK(esp_wifi_start());
+}
+
 void app_main(void) {
+    esp_err_t ret = nvs_flash_init();
+    if (ret == ESP_ERR_NVS_NO_FREE_PAGES || ret == ESP_ERR_NVS_NEW_VERSION_FOUND) {
+        ESP_ERROR_CHECK(nvs_flash_erase());
+        ret = nvs_flash_init();
+    }
+    ESP_ERROR_CHECK(ret);
+
+    ESP_LOGI(WIFI_TAG, "Initializing WiFi...");
+    wifi_init_sta();
+
+    EventBits_t bits = xEventGroupWaitBits(wifi_event_group,
+                                           WIFI_CONNECTED_BIT | WIFI_FAIL_BIT,
+                                           pdFALSE,
+                                           pdFALSE,
+                                           portMAX_DELAY);
+
+    if (bits & WIFI_CONNECTED_BIT) {
+        ESP_LOGI(WIFI_TAG, "Connected to WiFi");
+    } else {
+        ESP_LOGE(WIFI_TAG, "Failed to connect to WiFi");
+        return;
+    }
+
+    ESP_LOGI(WIEGAND_TAG, "Initializing Wiegand Reader...");
     wiegandData.bitCount = 0;
 
-    // Configure D0 and D1 pins
-    gpio_config_t io_conf;
-    io_conf.intr_type = GPIO_INTR_NEGEDGE; // Use negative edge for precise data capture
-    io_conf.mode = GPIO_MODE_INPUT;
-    io_conf.pin_bit_mask = (1ULL << D0_PIN) | (1ULL << D1_PIN);
-    io_conf.pull_down_en = GPIO_PULLDOWN_DISABLE;
-    io_conf.pull_up_en = GPIO_PULLUP_ENABLE;
+    gpio_config_t io_conf = {
+        .intr_type = GPIO_INTR_NEGEDGE,
+        .mode = GPIO_MODE_INPUT,
+        .pin_bit_mask = (1ULL << D0_PIN) | (1ULL << D1_PIN),
+        .pull_down_en = GPIO_PULLDOWN_DISABLE,
+        .pull_up_en = GPIO_PULLUP_ENABLE,
+    };
     gpio_config(&io_conf);
 
-    // Create a queue to handle GPIO events
     gpio_evt_queue = xQueueCreate(10, sizeof(uint32_t));
-
-    // Install GPIO ISR service
     gpio_install_isr_service(0);
     gpio_isr_handler_add(D0_PIN, d0_isr_handler, (void*) D0_PIN);
     gpio_isr_handler_add(D1_PIN, d1_isr_handler, (void*) D1_PIN);
 
-    // Create a timer for Wiegand timeout
     const esp_timer_create_args_t timer_args = {
         .callback = &wiegand_timeout_cb,
         .name = "wiegand_timer"
     };
     esp_timer_create(&timer_args, &wiegand_timer);
 
-    // Start the GPIO task
     xTaskCreate(gpio_task_example, "gpio_task_example", 2048, NULL, 10, NULL);
 
-    ESP_LOGI(TAG, "Wiegand reader initialized on pins %d (D0) and %d (D1)", D0_PIN, D1_PIN);
+    ESP_LOGI(WIEGAND_TAG, "Wiegand Reader Initialized on Pins %d (D0) and %d (D1)", D0_PIN, D1_PIN);
 }
