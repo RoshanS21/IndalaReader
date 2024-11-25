@@ -1,3 +1,4 @@
+#include "cJSON.h"
 #include "esp_event.h"
 #include "esp_http_client.h"
 #include "esp_log.h"
@@ -9,13 +10,18 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "freertos/queue.h"
+#include "lwip/dns.h"
 #include "lwip/err.h"
 #include "lwip/sys.h"
+#include "mbedtls/base64.h"
 #include "nvs_flash.h"
 #include <string.h>
 
-// Flask server URL
-#define SERVER_URL "https://cdda-2603-8081-1410-5a02-294b-6de8-de97-e293.ngrok-free.app:8000/verify"
+#define SERVER_URL "<https://97aa-2603-8081-1410-5a02-8ccb-8170-8cda-98fa.ngrok-free.app>/api/card_reader/validate_card"
+#define SERVER_TIMEOUT_MS 10000 // 10 seconds
+
+extern const char server_cert_pem_start[] asm("_binary_server_cert_pem_start");
+extern const char server_cert_pem_end[] asm("_binary_server_cert_pem_end");
 
 // WiFi Configuration
 #define WIFI_SSID      "MySpectrumWiFi80-2G"
@@ -34,6 +40,7 @@
 static EventGroupHandle_t wifi_event_group;
 static const char *WIFI_TAG = "WIFI";
 static const char *WIEGAND_TAG = "WIEGAND_READER";
+// static const char *READER_ID = "Indala_Test_1";
 
 static int retry_num = 0;
 typedef struct {
@@ -52,14 +59,46 @@ static void event_handler(void* arg, esp_event_base_t event_base, int32_t event_
 static void print_wiegand_data(const volatile wiegand_t* data);
 static void process_wiegand_data(void);
 void app_main(void);
+// Declare the event handler function
+esp_err_t _http_event_handler(esp_http_client_event_t *evt);
 
-// Function to send card number to server and log the response
+// Function to set a custom DNS server
+void set_custom_dns(void) {
+    ip_addr_t dnsserver;
+    IP_ADDR4(&dnsserver, 8, 8, 8, 8); // Google's DNS server
+    dns_setserver(0, &dnsserver);
+    ESP_LOGI(WIFI_TAG, "Custom DNS server set: 8.8.8.8");
+}
+
+void base64_encode(const char *input, char *output) {
+    size_t input_len = strlen(input);
+    size_t output_len;
+    mbedtls_base64_encode((unsigned char *)output, 128, &output_len, (const unsigned char *)input, input_len);
+    output[output_len] = '\0'; // Null-terminate the output
+}
+
+// Function to send card number to server and parse response
 static void send_card_to_server(uint32_t cardNumber) {
-    char post_data[64];
-    snprintf(post_data, sizeof(post_data), "{\"card_id\":\"%08lx\"}", cardNumber);
+    char post_data[256];
+    snprintf(post_data, sizeof(post_data), "{\"cardID\":\"%08lx\", \"readerID\":\"Indala1\"}", cardNumber);
+
+    // Combine username and password and encode in Base64
+    char username[] = "cardReader";
+    char password[] = "readerPass";
+    char auth_str[128];
+    snprintf(auth_str, sizeof(auth_str), "%s:%s", username, password);
+    char auth_base64[128];
+    base64_encode(auth_str, auth_base64);
+
+    char auth_header[256];
+    snprintf(auth_header, sizeof(auth_header), "Basic %s", auth_base64);
 
     esp_http_client_config_t config = {
         .url = SERVER_URL,
+        .timeout_ms = SERVER_TIMEOUT_MS, // Set timeout
+        .cert_pem = server_cert_pem_start, // Add the server certificate
+        .keep_alive_enable = true, // Ensure keep-alive is enabled
+        .event_handler = _http_event_handler, // Event handler for detailed logging
     };
 
     esp_http_client_handle_t client = esp_http_client_init(&config);
@@ -67,33 +106,88 @@ static void send_card_to_server(uint32_t cardNumber) {
     // Set HTTP POST method and payload
     esp_http_client_set_method(client, HTTP_METHOD_POST);
     esp_http_client_set_header(client, "Content-Type", "application/json");
+    esp_http_client_set_header(client, "Authorization", auth_header);
     esp_http_client_set_post_field(client, post_data, strlen(post_data));
+
+    // Enable HTTP logging
+    esp_log_level_set("HTTP_CLIENT", ESP_LOG_VERBOSE);
 
     // Perform the HTTP request
     esp_err_t err = esp_http_client_perform(client);
-
     if (err == ESP_OK) {
         int status_code = esp_http_client_get_status_code(client);
         ESP_LOGI(WIEGAND_TAG, "HTTP POST Status: %d", status_code);
 
-        if (status_code == 200) {
-            char response[128];
-            int len = esp_http_client_read(client, response, sizeof(response) - 1);
-            if (len > 0) {
-                response[len] = '\0';
-                ESP_LOGI(WIEGAND_TAG, "Server Response: %s", response);
-            }
-        } else if (status_code == 403) {
-            ESP_LOGW(WIEGAND_TAG, "Card not authorized");
-        } else {
-            ESP_LOGE(WIEGAND_TAG, "Unexpected HTTP status code: %d", status_code);
-        }
+        // Process response data directly in the event handler
     } else {
         ESP_LOGE(WIEGAND_TAG, "HTTP POST failed: %s", esp_err_to_name(err));
     }
 
     esp_http_client_cleanup(client);
 }
+
+// Define the event handler function
+esp_err_t _http_event_handler(esp_http_client_event_t *evt) {
+    static char response_buffer[1024];
+    static int buffer_pos = 0;
+
+    switch (evt->event_id) {
+        case HTTP_EVENT_ERROR:
+            ESP_LOGI(WIEGAND_TAG, "HTTP_EVENT_ERROR");
+            break;
+        case HTTP_EVENT_ON_CONNECTED:
+            ESP_LOGI(WIEGAND_TAG, "HTTP_EVENT_ON_CONNECTED");
+            break;
+        case HTTP_EVENT_HEADER_SENT:
+            ESP_LOGI(WIEGAND_TAG, "HTTP_EVENT_HEADER_SENT");
+            break;
+        case HTTP_EVENT_ON_HEADER:
+            ESP_LOGI(WIEGAND_TAG, "HTTP_EVENT_ON_HEADER, key=%s, value=%s", evt->header_key, evt->header_value);
+            break;
+        case HTTP_EVENT_ON_DATA:
+            ESP_LOGI(WIEGAND_TAG, "HTTP_EVENT_ON_DATA, len=%d", evt->data_len);
+            if (!esp_http_client_is_chunked_response(evt->client)) {
+                if (buffer_pos + evt->data_len < sizeof(response_buffer) - 1) {
+                    memcpy(response_buffer + buffer_pos, evt->data, evt->data_len);
+                    buffer_pos += evt->data_len;
+                }
+            }
+            break;
+        case HTTP_EVENT_ON_FINISH:
+            ESP_LOGI(WIEGAND_TAG, "HTTP_EVENT_ON_FINISH");
+            response_buffer[buffer_pos] = '\0';
+            ESP_LOGI(WIEGAND_TAG, "Server Response: %s", response_buffer);
+
+            // Parse the JSON response
+            cJSON *json = cJSON_Parse(response_buffer);
+            if (json == NULL) {
+                ESP_LOGE(WIEGAND_TAG, "Failed to parse JSON response");
+            } else {
+                cJSON *message = cJSON_GetObjectItem(json, "message");
+                cJSON *status = cJSON_GetObjectItem(json, "status");
+
+                if (cJSON_IsString(message) && (message->valuestring != NULL)) {
+                    ESP_LOGI(WIEGAND_TAG, "Message: %s", message->valuestring);
+                }
+
+                if (cJSON_IsString(status) && (status->valuestring != NULL)) {
+                    ESP_LOGI(WIEGAND_TAG, "Status: %s", status->valuestring);
+                }
+
+                cJSON_Delete(json);
+            }
+            buffer_pos = 0; // Reset buffer position for next request
+            break;
+        case HTTP_EVENT_DISCONNECTED:
+            ESP_LOGI(WIEGAND_TAG, "HTTP_EVENT_DISCONNECTED");
+            break;
+        case HTTP_EVENT_REDIRECT:
+            ESP_LOGI(WIEGAND_TAG, "HTTP_EVENT_REDIRECT");
+            break;
+    }
+    return ESP_OK;
+}
+
 
 void IRAM_ATTR d0_isr_handler(void* arg) {
     uint32_t gpio_num = (uint32_t) arg;
@@ -182,6 +276,7 @@ static void event_handler(void* arg, esp_event_base_t event_base, int32_t event_
         ESP_LOGI(WIFI_TAG, "Got IP: " IPSTR, IP2STR(&event->ip_info.ip));
         retry_num = 0;
         xEventGroupSetBits(wifi_event_group, WIFI_CONNECTED_BIT);
+        set_custom_dns(); // Set custom DNS after getting IP
     }
 }
 
@@ -232,6 +327,9 @@ void app_main(void) {
     ESP_LOGI(WIFI_TAG, "Initializing WiFi...");
     wifi_init_sta();
 
+    // Delay to ensure Wi-Fi connection is established
+    // vTaskDelay(10000 / portTICK_PERIOD_MS);
+
     EventBits_t bits = xEventGroupWaitBits(wifi_event_group,
                                            WIFI_CONNECTED_BIT | WIFI_FAIL_BIT,
                                            pdFALSE,
@@ -268,7 +366,7 @@ void app_main(void) {
     };
     esp_timer_create(&timer_args, &wiegand_timer);
 
-    xTaskCreate(gpio_task_example, "gpio_task_example", 4096, NULL, 10, NULL);
+    xTaskCreate(gpio_task_example, "gpio_task_example", 8192, NULL, 10, NULL);
 
     ESP_LOGI(WIEGAND_TAG, "Wiegand Reader Initialized on Pins %d (D0) and %d (D1)", D0_PIN, D1_PIN);
 }
