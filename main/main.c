@@ -38,6 +38,8 @@ extern const char server_cert_pem_end[] asm("_binary_server_cert_pem_end");
 #define D1_PIN GPIO_NUM_5
 #define MAX_BITS 32
 #define WIEGAND_TIMEOUT 50000
+#define GREEN_LED_PIN 21
+#define RED_LED_PIN 22
 
 static EventGroupHandle_t wifi_event_group;
 static const char *WIFI_TAG = "WIFI";
@@ -68,6 +70,37 @@ esp_err_t _http_event_handler(esp_http_client_event_t *evt);
 #include "esp_log.h"
 #include "esp_tls.h"
 #include "mbedtls/debug.h"
+
+// Function to initialize LEDs
+void init_leds(void) {
+    // Configure Red LED Pin
+    gpio_config_t io_conf;
+    io_conf.intr_type = GPIO_INTR_DISABLE;
+    io_conf.mode = GPIO_MODE_OUTPUT;
+    io_conf.pin_bit_mask = (1ULL << RED_LED_PIN);
+    io_conf.pull_down_en = 0;
+    io_conf.pull_up_en = 0;
+    gpio_config(&io_conf);
+
+    // Configure Green LED Pin
+    io_conf.pin_bit_mask = (1ULL << GREEN_LED_PIN);
+    gpio_config(&io_conf);
+}
+
+// Functio to control LEDs based on server response
+void control_leds(const char* status)
+{
+    if(strcmp(status, "success") == 0)
+    {
+        // Turn OFF red LED and turn ON green LED
+        gpio_set_level(RED_LED_PIN, 0);
+        gpio_set_level(GREEN_LED_PIN, 1);
+        vTaskDelay(pdMS_TO_TICKS(5000)); // Keep green LED ON for 5 seconds
+    }
+
+    gpio_set_level(RED_LED_PIN, 1);
+    gpio_set_level(GREEN_LED_PIN, 0);
+}
 
 // Debug function for mbedtls
 void mbedtls_debug(void *ctx, int level, const char *file, int line, const char *str) {
@@ -194,6 +227,8 @@ esp_err_t _http_event_handler(esp_http_client_event_t *evt) {
 
                 if (cJSON_IsString(status) && (status->valuestring != NULL)) {
                     ESP_LOGI(WIEGAND_TAG, "Status: %s", status->valuestring);
+                    // Control LEDs based on status
+                    control_leds(status->valuestring);
                 }
 
                 cJSON_Delete(json);
@@ -339,6 +374,11 @@ void wifi_init_sta(void) {
 }
 
 void app_main(void) {
+    // Initialize LEDs
+    init_leds();
+    gpio_set_level(RED_LED_PIN, 1);
+
+    // Configure mbedtls logging
     configure_mbedtls_logging();
 
     esp_err_t ret = nvs_flash_init();
