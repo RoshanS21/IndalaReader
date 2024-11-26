@@ -4,6 +4,7 @@
 #include "esp_log.h"
 #include "esp_system.h"
 #include "esp_timer.h"
+#include "esp_tls.h"
 #include "esp_wifi.h"
 #include "driver/gpio.h"
 #include "freertos/event_groups.h"
@@ -14,10 +15,11 @@
 #include "lwip/err.h"
 #include "lwip/sys.h"
 #include "mbedtls/base64.h"
+#include "mbedtls/debug.h"
 #include "nvs_flash.h"
 #include <string.h>
 
-#define SERVER_URL "<https://97aa-2603-8081-1410-5a02-8ccb-8170-8cda-98fa.ngrok-free.app>/api/card_reader/validate_card"
+#define SERVER_URL "https://5186-2603-8081-1410-5a02-3104-d336-b66a-5247.ngrok-free.app/api/card_reader/validate_card"
 #define SERVER_TIMEOUT_MS 10000 // 10 seconds
 
 extern const char server_cert_pem_start[] asm("_binary_server_cert_pem_start");
@@ -61,6 +63,26 @@ static void process_wiegand_data(void);
 void app_main(void);
 // Declare the event handler function
 esp_err_t _http_event_handler(esp_http_client_event_t *evt);
+
+
+#include "esp_log.h"
+#include "esp_tls.h"
+#include "mbedtls/debug.h"
+
+// Debug function for mbedtls
+void mbedtls_debug(void *ctx, int level, const char *file, int line, const char *str) {
+    ((void) level);
+    ESP_LOGI("mbedtls", "%s:%04d: %s", file, line, str);
+}
+
+// Function to configure the logging level for mbedtls
+void configure_mbedtls_logging(void) {
+    esp_log_level_set("mbedtls", ESP_LOG_DEBUG);
+    mbedtls_ssl_config ssl_conf;
+    mbedtls_ssl_config_init(&ssl_conf);
+    mbedtls_ssl_conf_dbg(&ssl_conf, mbedtls_debug, NULL);
+}
+
 
 // Function to set a custom DNS server
 void set_custom_dns(void) {
@@ -317,6 +339,8 @@ void wifi_init_sta(void) {
 }
 
 void app_main(void) {
+    configure_mbedtls_logging();
+
     esp_err_t ret = nvs_flash_init();
     if (ret == ESP_ERR_NVS_NO_FREE_PAGES || ret == ESP_ERR_NVS_NEW_VERSION_FOUND) {
         ESP_ERROR_CHECK(nvs_flash_erase());
