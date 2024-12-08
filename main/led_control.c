@@ -30,22 +30,24 @@ void control_leds(const char* status)
 {
     if(strcmp(status, "success") == 0)
     {
-        // Turn OFF red LED and turn ON green LED
+        // Unlock door
         gpio_set_level(RED_LED_PIN, 0);
         gpio_set_level(GREEN_LED_PIN, 1);
-        vTaskDelay(pdMS_TO_TICKS(5000)); // Green LED ON for 5 seconds
+        const int greenLedOnTimeMS = 3000;
+        vTaskDelay(pdMS_TO_TICKS(greenLedOnTimeMS));
     }
     else
     {
         // Blink red LED
         const int timesToBlink = 3;
+        const int blinkDelayMS = 300;
         int index;
         for(index = 0; index < timesToBlink; ++index)
         {
             gpio_set_level(RED_LED_PIN, 0);
-            vTaskDelay(pdMS_TO_TICKS(300));
+            vTaskDelay(pdMS_TO_TICKS(blinkDelayMS));
             gpio_set_level(RED_LED_PIN, 1);
-            vTaskDelay(pdMS_TO_TICKS(300));
+            vTaskDelay(pdMS_TO_TICKS(blinkDelayMS));
         }
     }
 
