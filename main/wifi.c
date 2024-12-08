@@ -9,7 +9,6 @@
 #include "freertos/event_groups.h"
 #include <string.h>
 
-
 // WiFi Configuration
 #define WIFI_SSID      "MySpectrumWiFi80-2G"
 #define WIFI_PASS      "livelyroad189"
@@ -21,7 +20,6 @@ static EventGroupHandle_t wifi_event_group;
 static const char *WIFI_TAG = "WIFI";
 static int retry_num = 0;
 
-// Function to set a custom DNS server
 void set_custom_dns(void) {
     ip_addr_t dnsserver;
     IP_ADDR4(&dnsserver, 8, 8, 8, 8); // Google's DNS server
@@ -49,7 +47,6 @@ void event_handler(void* arg, esp_event_base_t event_base, int32_t event_id, voi
         set_custom_dns(); // Set custom DNS after getting IP
     }
 }
-
 
 void wifi_init_sta(void) {
     ESP_LOGI(WIFI_TAG, "Initializing WiFi...");
@@ -100,5 +97,4 @@ void wifi_init_sta(void) {
         ESP_LOGE(WIFI_TAG, "Failed to connect to WiFi");
         return;
     }
-
 }

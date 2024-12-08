@@ -7,10 +7,10 @@
 #include "mbedtls/base64.h"
 #include "mbedtls/debug.h"
 
-// static const char *READER_ID = "Indala_Test_1";
+static const char *READER_ID = "Indala_Test_RS";
 static const char *HTTP_CLIENT_TAG = "HTTP_CLIENT";
 
-#define SERVER_URL "https://5186-2603-8081-1410-5a02-3104-d336-b66a-5247.ngrok-free.app/api/card_reader/validate_card"
+#define SERVER_URL "https://74da-2603-8081-1410-5a02-ec51-281d-90c2-fcb6.ngrok-free.app/api/card_reader/validate_card"
 #define SERVER_TIMEOUT_MS 10000 // 10 seconds
 
 extern const char server_cert_pem_start[] asm("_binary_server_cert_pem_start");
@@ -40,7 +40,7 @@ void configure_mbedtls_logging(void) {
 // Function to send card number to server and parse response
 void send_card_to_server(uint32_t cardNumber) {
     char post_data[256];
-    snprintf(post_data, sizeof(post_data), "{\"cardID\":\"%08lx\", \"readerID\":\"Indala1\"}", cardNumber);
+    snprintf(post_data, sizeof(post_data), "{\"cardID\":\"%08lx\", \"readerID\":\"%s\"}", cardNumber, READER_ID);
 
     // Combine username and password and encode in Base64
     char username[] = "cardReader";
@@ -55,10 +55,10 @@ void send_card_to_server(uint32_t cardNumber) {
 
     esp_http_client_config_t config = {
         .url = SERVER_URL,
-        .timeout_ms = SERVER_TIMEOUT_MS, // Set timeout
+        .timeout_ms = SERVER_TIMEOUT_MS,
         .cert_pem = server_cert_pem_start, // Add the server certificate
-        .keep_alive_enable = true, // Ensure keep-alive is enabled
-        .event_handler = _http_event_handler, // Event handler for detailed logging
+        .keep_alive_enable = true,
+        .event_handler = _http_event_handler,
     };
 
     esp_http_client_handle_t client = esp_http_client_init(&config);
@@ -69,7 +69,6 @@ void send_card_to_server(uint32_t cardNumber) {
     esp_http_client_set_header(client, "Authorization", auth_header);
     esp_http_client_set_post_field(client, post_data, strlen(post_data));
 
-    // Enable HTTP logging
     esp_log_level_set("HTTP_CLIENT", ESP_LOG_VERBOSE);
 
     // Perform the HTTP request
@@ -77,8 +76,7 @@ void send_card_to_server(uint32_t cardNumber) {
     if (err == ESP_OK) {
         int status_code = esp_http_client_get_status_code(client);
         ESP_LOGI(HTTP_CLIENT_TAG, "HTTP POST Status: %d", status_code);
-
-        // Process response data directly in the event handler
+        // Response data processed directly in the event handler
     } else {
         ESP_LOGE(HTTP_CLIENT_TAG, "HTTP POST failed: %s", esp_err_to_name(err));
     }

@@ -11,8 +11,8 @@
 #include <string.h>
 
 // Wiegand Configuration
-#define D0_PIN GPIO_NUM_4
-#define D1_PIN GPIO_NUM_5
+#define D0_PIN GPIO_NUM_4 // GREEN
+#define D1_PIN GPIO_NUM_5 // WHITE
 #define MAX_BITS 32
 #define WIEGAND_TIMEOUT 50000
 
