@@ -76,7 +76,7 @@ void process_wiegand_data(void) {
     wiegandData.bitCount = 0;
 }
 
-static void gpio_task_example(void* arg) {
+static void wiegand_task(void* arg) {
     uint32_t io_num;
     while (true) {
         if (xQueueReceive(gpio_evt_queue, &io_num, portMAX_DELAY)) {
@@ -121,7 +121,7 @@ void init_wiegand_reader(void)
     };
     esp_timer_create(&timer_args, &wiegand_timer);
 
-    xTaskCreate(gpio_task_example, "gpio_task_example", 8192, NULL, 10, NULL);
+    xTaskCreate(wiegand_task, "wiegand_task", 8192, NULL, 10, NULL);
 
     ESP_LOGI(WIEGAND_TAG, "Wiegand Reader Initialized on Pins %d (D0) and %d (D1)", D0_PIN, D1_PIN);
 }
