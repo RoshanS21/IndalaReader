@@ -34,9 +34,9 @@ void init_leds(void)
     gpio_set_level(RED_LED_PIN, 1);
 }
 
-void control_leds(const char* status)
+void control_leds(const bool accessGranted)
 {
-    if(strcmp(status, "success") == 0)
+    if(accessGranted)
     {
         // Unlock door
         gpio_set_level(RED_LED_PIN, 0);

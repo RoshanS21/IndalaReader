@@ -100,11 +100,10 @@ esp_err_t _http_event_handler(esp_http_client_event_t *evt) {
             break;
         case HTTP_EVENT_ON_DATA:
             ESP_LOGI(HTTP_CLIENT_TAG, "HTTP_EVENT_ON_DATA, len=%d", evt->data_len);
-            if (!esp_http_client_is_chunked_response(evt->client)) {
-                if (buffer_pos + evt->data_len < sizeof(response_buffer) - 1) {
-                    memcpy(response_buffer + buffer_pos, evt->data, evt->data_len);
-                    buffer_pos += evt->data_len;
-                }
+            if(buffer_pos + evt->data_len < sizeof(response_buffer) - 1)
+            {
+                memcpy(response_buffer + buffer_pos, evt->data, evt->data_len);
+                buffer_pos += evt->data_len;
             }
             break;
         case HTTP_EVENT_ON_FINISH:
@@ -112,22 +111,21 @@ esp_err_t _http_event_handler(esp_http_client_event_t *evt) {
             response_buffer[buffer_pos] = '\0';
             ESP_LOGI(HTTP_CLIENT_TAG, "Server Response: %s", response_buffer);
 
-            // Parse the JSON response
             cJSON *json = cJSON_Parse(response_buffer);
             if (json == NULL) {
                 ESP_LOGE(HTTP_CLIENT_TAG, "Failed to parse JSON response");
             } else {
-                cJSON *message = cJSON_GetObjectItem(json, "message");
-                cJSON *status = cJSON_GetObjectItem(json, "status");
+                cJSON *readerID = cJSON_GetObjectItem(json, "readerID");
+                cJSON *accessGranted = cJSON_GetObjectItem(json, "accessGranted");
 
-                if (cJSON_IsString(message) && (message->valuestring != NULL)) {
-                    ESP_LOGI(HTTP_CLIENT_TAG, "Message: %s", message->valuestring);
+                if (cJSON_IsString(readerID) && (readerID->valuestring != NULL)) {
+                    ESP_LOGI(HTTP_CLIENT_TAG, "Reader ID: %s", readerID->valuestring);
                 }
 
-                if (cJSON_IsString(status) && (status->valuestring != NULL)) {
-                    ESP_LOGI(HTTP_CLIENT_TAG, "Status: %s", status->valuestring);
-                    // Control LEDs based on status
-                    control_leds(status->valuestring);
+                if (cJSON_IsBool(accessGranted)) {
+                    bool granted = cJSON_IsTrue(accessGranted);
+                    ESP_LOGI(HTTP_CLIENT_TAG, "Access Granted: %s", granted ? "true" : "false");
+                    control_leds(granted);
                 }
 
                 cJSON_Delete(json);
