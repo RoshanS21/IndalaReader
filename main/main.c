@@ -6,10 +6,7 @@
 #include "nvs_flash.h"
 
 void app_main(void) {
-    // Initialize LEDs
     init_leds();
-
-    // Configure mbedtls logging
     configure_mbedtls_logging();
 
     esp_err_t ret = nvs_flash_init();
@@ -19,9 +16,6 @@ void app_main(void) {
     }
     ESP_ERROR_CHECK(ret);
 
-    // Connect to Wi-Fi
     wifi_init_sta();
-
-    // Initialize Reader
     init_wiegand_reader();
 }

@@ -69,7 +69,6 @@ void process_wiegand_data(void) {
         ESP_LOGI(WIEGAND_TAG, "Card Number(Hex): %08lx", (unsigned long)cardNumber);
         ESP_LOGI(WIEGAND_TAG, " ");
 
-        // Send card number to the server
         send_card_to_server(cardNumber);
     } else {
         ESP_LOGE(WIEGAND_TAG, "Invalid Wiegand bit length");

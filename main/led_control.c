@@ -9,7 +9,6 @@
 #define RED_LED_PIN 22
 
 void init_leds(void) {
-    // Configure Red LED Pin
     gpio_config_t io_conf;
     io_conf.intr_type = GPIO_INTR_DISABLE;
     io_conf.mode = GPIO_MODE_OUTPUT;
@@ -18,7 +17,6 @@ void init_leds(void) {
     io_conf.pull_up_en = 0;
     gpio_config(&io_conf);
 
-    // Configure Green LED Pin
     io_conf.pin_bit_mask = (1ULL << GREEN_LED_PIN);
     gpio_config(&io_conf);
 

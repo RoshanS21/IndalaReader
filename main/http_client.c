@@ -7,10 +7,10 @@
 #include "mbedtls/base64.h"
 #include "mbedtls/debug.h"
 
-static const char *READER_ID = "Indala_Test_RS";
 static const char *HTTP_CLIENT_TAG = "HTTP_CLIENT";
 
-#define SERVER_URL "https://74da-2603-8081-1410-5a02-ec51-281d-90c2-fcb6.ngrok-free.app/api/card_reader/validate_card"
+#define READER_ID CONFIG_ESP_READER_ID
+#define SERVER_URL CONFIG_ESP_SERVER_URL
 #define SERVER_TIMEOUT_MS 10000 // 10 seconds
 
 extern const char server_cert_pem_start[] asm("_binary_server_cert_pem_start");
@@ -20,16 +20,14 @@ void base64_encode(const char *input, char *output) {
     size_t input_len = strlen(input);
     size_t output_len;
     mbedtls_base64_encode((unsigned char *)output, 128, &output_len, (const unsigned char *)input, input_len);
-    output[output_len] = '\0'; // Null-terminate the output
+    output[output_len] = '\0';
 }
 
-// Debug function for mbedtls
 void mbedtls_debug(void *ctx, int level, const char *file, int line, const char *str) {
     ((void) level);
     ESP_LOGI("mbedtls", "%s:%04d: %s", file, line, str);
 }
 
-// Function to configure the logging level for mbedtls
 void configure_mbedtls_logging(void) {
     esp_log_level_set("mbedtls", ESP_LOG_DEBUG);
     mbedtls_ssl_config ssl_conf;
@@ -37,7 +35,6 @@ void configure_mbedtls_logging(void) {
     mbedtls_ssl_conf_dbg(&ssl_conf, mbedtls_debug, NULL);
 }
 
-// Function to send card number to server and parse response
 void send_card_to_server(uint32_t cardNumber) {
     char post_data[256];
     snprintf(post_data, sizeof(post_data), "{\"cardID\":\"%08lx\", \"readerID\":\"%s\"}", cardNumber, READER_ID);
@@ -84,7 +81,6 @@ void send_card_to_server(uint32_t cardNumber) {
     esp_http_client_cleanup(client);
 }
 
-// Define the event handler function
 esp_err_t _http_event_handler(esp_http_client_event_t *evt) {
     static char response_buffer[1024];
     static int buffer_pos = 0;
@@ -136,7 +132,7 @@ esp_err_t _http_event_handler(esp_http_client_event_t *evt) {
 
                 cJSON_Delete(json);
             }
-            buffer_pos = 0; // Reset buffer position for next request
+            buffer_pos = 0;
             break;
         case HTTP_EVENT_DISCONNECTED:
             ESP_LOGI(HTTP_CLIENT_TAG, "HTTP_EVENT_DISCONNECTED");
@@ -145,5 +141,6 @@ esp_err_t _http_event_handler(esp_http_client_event_t *evt) {
             ESP_LOGI(HTTP_CLIENT_TAG, "HTTP_EVENT_REDIRECT");
             break;
     }
+
     return ESP_OK;
 }

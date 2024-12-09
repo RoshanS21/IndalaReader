@@ -10,11 +10,11 @@
 #include <string.h>
 
 // WiFi Configuration
-#define WIFI_SSID      "MySpectrumWiFi80-2G"
-#define WIFI_PASS      "livelyroad189"
-#define MAX_RETRY      5
+#define WIFI_SSID CONFIG_ESP_WIFI_SSID
+#define WIFI_PASS CONFIG_ESP_WIFI_PASSWORD
+#define MAX_RETRY 5
 #define WIFI_CONNECTED_BIT BIT0
-#define WIFI_FAIL_BIT      BIT1
+#define WIFI_FAIL_BIT BIT1
 
 static EventGroupHandle_t wifi_event_group;
 static const char *WIFI_TAG = "WIFI";
@@ -44,7 +44,7 @@ void event_handler(void* arg, esp_event_base_t event_base, int32_t event_id, voi
         ESP_LOGI(WIFI_TAG, "Got IP: " IPSTR, IP2STR(&event->ip_info.ip));
         retry_num = 0;
         xEventGroupSetBits(wifi_event_group, WIFI_CONNECTED_BIT);
-        set_custom_dns(); // Set custom DNS after getting IP
+        set_custom_dns();
     }
 }
 
