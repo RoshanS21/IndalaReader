@@ -34,7 +34,7 @@ void event_handler(void* arg, esp_event_base_t event_base, int32_t event_id, voi
         if (retry_num < MAX_RETRY) {
             esp_wifi_connect();
             retry_num++;
-            ESP_LOGI(WIFI_TAG, "Retry to connect to the AP");
+            ESP_LOGI(WIFI_TAG, "Retry to connect to the AP: %s", WIFI_SSID);
         } else {
             xEventGroupSetBits(wifi_event_group, WIFI_FAIL_BIT);
         }
