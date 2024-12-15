@@ -72,6 +72,7 @@ void process_wiegand_data(void) {
         send_card_to_server(cardNumber);
     } else {
         ESP_LOGE(WIEGAND_TAG, "Invalid Wiegand bit length");
+        fail_to_read_card();
     }
     wiegandData.bitCount = 0;
 }

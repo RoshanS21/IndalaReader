@@ -1,4 +1,5 @@
 #include "wifi.h"
+#include "led_control.h"
 
 #include "esp_wifi.h"
 #include "esp_log.h"
@@ -93,8 +94,10 @@ void wifi_init_sta(void) {
 
     if (bits & WIFI_CONNECTED_BIT) {
         ESP_LOGI(WIFI_TAG, "Connected to WiFi");
+        connected_to_wifi();
     } else {
         ESP_LOGE(WIFI_TAG, "Failed to connect to WiFi");
+        fail_to_connect_wifi();
         return;
     }
 }

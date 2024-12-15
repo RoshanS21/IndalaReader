@@ -98,3 +98,45 @@ void control_leds(const bool accessGranted)
 
     lock_door();
 }
+
+void fail_to_read_card()
+{
+    const int timesToBlink = 2;
+    const int blinkDelayMS = 500;
+    int index;
+    for(index = 0; index < timesToBlink; ++index)
+    {
+        gpio_set_level(RED_LED_PIN, 0);
+        vTaskDelay(pdMS_TO_TICKS(blinkDelayMS));
+        gpio_set_level(RED_LED_PIN, 1);
+        vTaskDelay(pdMS_TO_TICKS(blinkDelayMS));
+    }
+}
+
+void fail_to_connect_wifi()
+{
+    const int timesToBlink = 12;
+    const int blinkDelayMS = 500;
+    int index;
+    for(index = 0; index < timesToBlink; ++index)
+    {
+        gpio_set_level(RED_LED_PIN, 0);
+        vTaskDelay(pdMS_TO_TICKS(blinkDelayMS));
+        gpio_set_level(RED_LED_PIN, 1);
+        vTaskDelay(pdMS_TO_TICKS(blinkDelayMS));
+    }
+}
+
+void connected_to_wifi()
+{
+    const int timesToBlink = 3;
+    const int blinkDelayMS = 300;
+    int index;
+    for(index = 0; index < timesToBlink; ++index)
+    {
+        gpio_set_level(GREEN_LED_PIN, 1);
+        vTaskDelay(pdMS_TO_TICKS(blinkDelayMS));
+        gpio_set_level(GREEN_LED_PIN, 0);
+        vTaskDelay(pdMS_TO_TICKS(blinkDelayMS));
+    }
+}
