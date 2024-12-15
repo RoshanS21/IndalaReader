@@ -12,6 +12,8 @@ static const char *HTTP_CLIENT_TAG = "HTTP_CLIENT";
 #define READER_ID CONFIG_ESP_READER_ID
 #define SERVER_URL CONFIG_ESP_SERVER_URL
 #define SERVER_TIMEOUT_MS 10000 // 10 seconds
+#define SERVER_USERNAME CONFIG_ESP_SERVER_USERNAME
+#define SERVER_PASSWORD CONFIG_ESP_SERVER_PASSWORD
 
 extern const char server_cert_pem_start[] asm("_binary_server_cert_pem_start");
 extern const char server_cert_pem_end[] asm("_binary_server_cert_pem_end");
@@ -40,10 +42,8 @@ void send_card_to_server(uint32_t cardNumber) {
     snprintf(post_data, sizeof(post_data), "{\"cardID\":\"%08lx\", \"readerID\":\"%s\"}", cardNumber, READER_ID);
 
     // Combine username and password and encode in Base64
-    char username[] = "cardReader";
-    char password[] = "readerPass";
     char auth_str[128];
-    snprintf(auth_str, sizeof(auth_str), "%s:%s", username, password);
+    snprintf(auth_str, sizeof(auth_str), "%s:%s", SERVER_USERNAME, SERVER_PASSWORD);
     char auth_base64[128];
     base64_encode(auth_str, auth_base64);
 

@@ -6,11 +6,29 @@
 #include "freertos/task.h"
 #include <string.h>
 
+#define DOOR_LOCK_SET 18
+#define DOOR_LOCK_UNSET 19
 #define DOOR_SENSOR_PIN 20
 #define GREEN_LED_PIN 21
 #define RED_LED_PIN 22
 
 static const char *DOOR_SENSOR_TAG = "DOOR SENSOR";
+
+static void lock_door()
+{
+    gpio_set_level(RED_LED_PIN, 1);
+    gpio_set_level(GREEN_LED_PIN, 0);
+    gpio_set_level(DOOR_LOCK_UNSET, 0);
+    gpio_set_level(DOOR_LOCK_SET, 1);
+}
+
+static void unlock_door()
+{
+    gpio_set_level(RED_LED_PIN, 0);
+    gpio_set_level(GREEN_LED_PIN, 1);
+    gpio_set_level(DOOR_LOCK_SET, 0);
+    gpio_set_level(DOOR_LOCK_UNSET, 1);
+}
 
 void init_leds(void)
 {
@@ -25,22 +43,25 @@ void init_leds(void)
     io_conf.pin_bit_mask = (1ULL << GREEN_LED_PIN);
     gpio_config(&io_conf);
 
+    io_conf.pin_bit_mask = (1ULL << DOOR_LOCK_SET);
+    gpio_config(&io_conf);
+
+    io_conf.pin_bit_mask = (1ULL << DOOR_LOCK_UNSET);
+    gpio_config(&io_conf);
+
     io_conf.mode = GPIO_MODE_INPUT;
     io_conf.pin_bit_mask = (1ULL << DOOR_SENSOR_PIN);
     io_conf.pull_up_en = 1;
     gpio_config(&io_conf);
 
-    // Door locked on Start
-    gpio_set_level(RED_LED_PIN, 1);
+    lock_door();
 }
 
 void control_leds(const bool accessGranted)
 {
     if(accessGranted)
     {
-        // Unlock door
-        gpio_set_level(RED_LED_PIN, 0);
-        gpio_set_level(GREEN_LED_PIN, 1);
+        unlock_door();
         const int greenLedOnTimeMS = 3000;
         vTaskDelay(pdMS_TO_TICKS(greenLedOnTimeMS));
 
@@ -75,6 +96,5 @@ void control_leds(const bool accessGranted)
         }
     }
 
-    gpio_set_level(RED_LED_PIN, 1);
-    gpio_set_level(GREEN_LED_PIN, 0);
+    lock_door();
 }
