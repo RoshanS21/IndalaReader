@@ -1,4 +1,5 @@
 #include "led_control.h"
+#include "http_client.h"
 
 #include "driver/gpio.h"
 #include "esp_log.h"
@@ -13,6 +14,32 @@
 #define RED_LED_PIN 22
 
 static const char *DOOR_SENSOR_TAG = "DOOR SENSOR";
+static int last_door_state = -1;
+static int check_door_every_second_MS = 1000;
+
+void door_state_monitor_task(void* arg)
+{
+    while(true)
+    {
+        int door_state = gpio_get_level(DOOR_SENSOR_PIN);
+        if(door_state != last_door_state)
+        {
+            last_door_state = door_state;
+            if(door_state == 0)
+            {
+                ESP_LOGI(DOOR_SENSOR_TAG, "Door Closed");
+            }
+            else
+            {
+                ESP_LOGI(DOOR_SENSOR_TAG, "Door Open");
+            }
+
+            send_door_state_to_server(door_state);
+        }
+
+        vTaskDelay(pdMS_TO_TICKS(check_door_every_second_MS));
+    }
+}
 
 static void lock_door()
 {

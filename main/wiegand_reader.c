@@ -30,6 +30,8 @@ typedef struct
 
 volatile wiegand_t wiegandData;
 
+void door_state_monitor_task(void* arg);
+
 void IRAM_ATTR d0_isr_handler(void* arg)
 {
     uint32_t gpio_num = (uint32_t) arg;
@@ -159,6 +161,7 @@ void init_wiegand_reader(void)
 
     xTaskCreate(wiegand_task, "wiegand_task", 8192, NULL, 10, NULL);
     xTaskCreate(server_task, "server_task", 8192, NULL, 10, NULL);
+    xTaskCreate(door_state_monitor_task, "door_state_monitor_task", 8192, NULL, 5, NULL);
 
     ESP_LOGI(WIEGAND_TAG, "Wiegand Reader Initialized on Pins %d (D0) and %d (D1)", D0_PIN, D1_PIN);
 }

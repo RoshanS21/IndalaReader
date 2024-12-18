@@ -21,26 +21,36 @@ static EventGroupHandle_t wifi_event_group;
 static const char *WIFI_TAG = "WIFI";
 static int retry_num = 0;
 
-void set_custom_dns(void) {
+void set_custom_dns(void)
+{
     ip_addr_t dnsserver;
     IP_ADDR4(&dnsserver, 8, 8, 8, 8); // Google's DNS server
     dns_setserver(0, &dnsserver);
     ESP_LOGI(WIFI_TAG, "Custom DNS server set: 8.8.8.8");
 }
 
-void event_handler(void* arg, esp_event_base_t event_base, int32_t event_id, void* event_data) {
-    if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_START) {
+void event_handler(void* arg, esp_event_base_t event_base, int32_t event_id, void* event_data)
+{
+    if(event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_START)
+    {
         esp_wifi_connect();
-    } else if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_DISCONNECTED) {
-        if (retry_num < MAX_RETRY) {
+    }
+    else if(event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_DISCONNECTED)
+    {
+        if(retry_num < MAX_RETRY)
+        {
             esp_wifi_connect();
             retry_num++;
             ESP_LOGI(WIFI_TAG, "Retry to connect to the AP: %s", WIFI_SSID);
-        } else {
+        }
+        else
+        {
             xEventGroupSetBits(wifi_event_group, WIFI_FAIL_BIT);
         }
         ESP_LOGI(WIFI_TAG, "Failed to connect");
-    } else if (event_base == IP_EVENT && event_id == IP_EVENT_STA_GOT_IP) {
+    }
+    else if(event_base == IP_EVENT && event_id == IP_EVENT_STA_GOT_IP)
+    {
         ip_event_got_ip_t* event = (ip_event_got_ip_t*) event_data;
         ESP_LOGI(WIFI_TAG, "Got IP: " IPSTR, IP2STR(&event->ip_info.ip));
         retry_num = 0;
@@ -49,7 +59,8 @@ void event_handler(void* arg, esp_event_base_t event_base, int32_t event_id, voi
     }
 }
 
-void wifi_init_sta(void) {
+void wifi_init_sta(void)
+{
     ESP_LOGI(WIFI_TAG, "Initializing WiFi...");
 
     wifi_event_group = xEventGroupCreate();
@@ -92,10 +103,13 @@ void wifi_init_sta(void) {
                                            pdFALSE,
                                            portMAX_DELAY);
 
-    if (bits & WIFI_CONNECTED_BIT) {
+    if(bits & WIFI_CONNECTED_BIT)
+    {
         ESP_LOGI(WIFI_TAG, "Connected to WiFi");
         connected_to_wifi();
-    } else {
+    }
+    else
+    {
         ESP_LOGE(WIFI_TAG, "Failed to connect to WiFi");
         fail_to_connect_wifi();
         return;
