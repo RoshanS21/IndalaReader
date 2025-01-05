@@ -80,11 +80,14 @@ void process_wiegand_data(void)
         ESP_LOGI(WIEGAND_TAG, "Facility Code: %d", facilityCode);
         ESP_LOGI(WIEGAND_TAG, "Card Number: %lu", (unsigned long)cardNumber);
         ESP_LOGI(WIEGAND_TAG, "Card Number(Hex): %08lx", (unsigned long)cardNumber);
-        ESP_LOGI(WIEGAND_TAG, " ");
 
-        if(xQueueSend(card_queue, &cardNumber, portMAX_DELAY) != pdPASS)
+        if(xQueueSend(card_queue, &cardNumber, portMAX_DELAY) == pdPASS)
         {
-            ESP_LOGE(WIEGAND_TAG, "Failed to send card number to queue");
+            ESP_LOGI(WIEGAND_TAG, "Sent card number: %lu to queue", (unsigned long)cardNumber);
+        }
+        else
+        {
+            ESP_LOGE(WIEGAND_TAG, "Failed to send card number: %lu to queue", (unsigned long)cardNumber);
         }
     }
     else
@@ -92,6 +95,7 @@ void process_wiegand_data(void)
         ESP_LOGE(WIEGAND_TAG, "Invalid Wiegand bit length");
         fail_to_read_card();
     }
+
     wiegandData.bitCount = 0;
 }
 
@@ -112,6 +116,7 @@ static void wiegand_task(void* arg)
                 }
                 wiegandData.bitCount++;
             }
+
             if(wiegandData.bitCount >= MAX_BITS)
             {
                 esp_timer_stop(wiegand_timer);

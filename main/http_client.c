@@ -40,49 +40,49 @@ void configure_mbedtls_logging(void)
     mbedtls_ssl_conf_dbg(&ssl_conf, mbedtls_debug, NULL);
 }
 
-void send_door_state_to_server(int door_state)
+void send_door_state_to_server(int /*door_state*/)
 {
-    char post_data[256];
-    snprintf(post_data, sizeof(post_data), "{\"doorState\": %d, \"readerID\": \"%s\"}", door_state, READER_ID);
+    // char post_data[256];
+    // snprintf(post_data, sizeof(post_data), "{\"doorState\": %d, \"readerID\": \"%s\"}", door_state, READER_ID);
 
-    // Combine username and password and encode in Base64
-    char auth_str[128];
-    snprintf(auth_str, sizeof(auth_str), "%s:%s", SERVER_USERNAME, SERVER_PASSWORD);
-    char auth_base64[128];
-    base64_encode(auth_str, auth_base64);
+    // // Combine username and password and encode in Base64
+    // char auth_str[128];
+    // snprintf(auth_str, sizeof(auth_str), "%s:%s", SERVER_USERNAME, SERVER_PASSWORD);
+    // char auth_base64[128];
+    // base64_encode(auth_str, auth_base64);
 
-    char auth_header[256];
-    snprintf(auth_header, sizeof(auth_header), "Basic %s", auth_base64);
+    // char auth_header[256];
+    // snprintf(auth_header, sizeof(auth_header), "Basic %s", auth_base64);
 
-    esp_http_client_config_t config = {
-        .url = SERVER_URL,
-        .timeout_ms = SERVER_TIMEOUT_MS,
-        .cert_pem = server_cert_pem_start, // Add the server certificate
-        .keep_alive_enable = true,
-        .event_handler = _http_event_handler,
-    };
+    // esp_http_client_config_t config = {
+    //     .url = SERVER_URL, // need to update this url for door state
+    //     .timeout_ms = SERVER_TIMEOUT_MS,
+    //     .cert_pem = server_cert_pem_start, // Add the server certificate
+    //     .keep_alive_enable = true,
+    //     .event_handler = _http_event_handler,
+    // };
 
-    esp_http_client_handle_t client = esp_http_client_init(&config);
+    // esp_http_client_handle_t client = esp_http_client_init(&config);
 
-    // Set HTTP POST method and payload
-    esp_http_client_set_method(client, HTTP_METHOD_POST);
-    esp_http_client_set_header(client, "Content-Type", "application/json");
-    esp_http_client_set_header(client, "Authorization", auth_header);
-    esp_http_client_set_post_field(client, post_data, strlen(post_data));
+    // // Set HTTP POST method and payload
+    // esp_http_client_set_method(client, HTTP_METHOD_POST);
+    // esp_http_client_set_header(client, "Content-Type", "application/json");
+    // esp_http_client_set_header(client, "Authorization", auth_header);
+    // esp_http_client_set_post_field(client, post_data, strlen(post_data));
 
-    esp_log_level_set("HTTP_CLIENT", ESP_LOG_VERBOSE);
+    // esp_log_level_set("HTTP_CLIENT", ESP_LOG_VERBOSE);
 
-    // Perform the HTTP request
-    esp_err_t err = esp_http_client_perform(client);
-    if (err == ESP_OK) {
-        int status_code = esp_http_client_get_status_code(client);
-        ESP_LOGI(HTTP_CLIENT_TAG, "HTTP POST Status: %d", status_code);
-        // Response data processed directly in the event handler
-    } else {
-        ESP_LOGE(HTTP_CLIENT_TAG, "HTTP POST failed: %s", esp_err_to_name(err));
-    }
+    // // Perform the HTTP request
+    // esp_err_t err = esp_http_client_perform(client);
+    // if (err == ESP_OK) {
+    //     int status_code = esp_http_client_get_status_code(client);
+    //     ESP_LOGI(HTTP_CLIENT_TAG, "HTTP POST Status: %d", status_code);
+    //     // Response data processed directly in the event handler
+    // } else {
+    //     ESP_LOGE(HTTP_CLIENT_TAG, "HTTP POST failed: %s", esp_err_to_name(err));
+    // }
 
-    esp_http_client_cleanup(client);
+    // esp_http_client_cleanup(client);
 }
 
 void send_card_to_server(uint32_t cardNumber) {
@@ -98,8 +98,12 @@ void send_card_to_server(uint32_t cardNumber) {
     char auth_header[256];
     snprintf(auth_header, sizeof(auth_header), "Basic %s", auth_base64);
 
+    const char* validate_card_end_point = "/api/card_reader/validate_card";
+    char server_url[strlen(SERVER_URL) + strlen(validate_card_end_point) + 1];
+    snprintf(server_url, sizeof(server_url), "%s%s", SERVER_URL, validate_card_end_point);
+
     esp_http_client_config_t config = {
-        .url = SERVER_URL,
+        .url = server_url,
         .timeout_ms = SERVER_TIMEOUT_MS,
         .cert_pem = server_cert_pem_start, // Add the server certificate
         .keep_alive_enable = true,
